@@ -24,3 +24,126 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Editor.js Custom Styles */
+#editorjs {
+  background-color: #ffffff !important;
+  color: #111827 !important;
+}
+
+.ce-block__content,
+.ce-toolbar__content {
+  max-width: 100%;
+}
+
+.ce-toolbar__plus {
+  color: #2563eb !important;
+}
+
+.ce-toolbar__settings-btn {
+  color: #2563eb !important;
+}
+
+.codex-editor__redactor {
+  padding-bottom: 0 !important;
+}
+
+.ce-block {
+  color: #111827 !important;
+}
+
+.ce-paragraph {
+  color: #111827 !important;
+  line-height: 1.6em;
+  font-size: 16px;
+}
+
+.ce-header {
+  color: #111827 !important;
+  font-weight: 600;
+}
+
+/* Force all text elements to be black */
+.codex-editor,
+.codex-editor *,
+.ce-block *,
+.ce-paragraph,
+.ce-header,
+.cdx-block {
+  color: #111827 !important;
+}
+
+/* Ensure contenteditable areas have black text */
+[contenteditable="true"] {
+  color: #111827 !important;
+}
+
+/* Override any white text in editor */
+#editorjs [contenteditable] {
+  color: #111827 !important;
+}
+
+#editorjs .ce-block__content {
+  color: #111827 !important;
+}
+
+#editorjs .ce-paragraph {
+  color: #111827 !important;
+}
+
+#editorjs div,
+#editorjs p,
+#editorjs h1,
+#editorjs h2,
+#editorjs h3,
+#editorjs h4,
+#editorjs h5,
+#editorjs h6,
+#editorjs span,
+#editorjs strong,
+#editorjs em,
+#editorjs code {
+  color: #111827 !important;
+}
+
+/* Image tool styles */
+.image-tool__image {
+  max-width: 100%;
+  border-radius: 8px;
+}
+
+.image-tool__caption {
+  color: #6b7280 !important;
+  text-align: center;
+  font-size: 14px;
+  margin-top: 8px;
+}
+
+.cdx-input {
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 8px 12px;
+  width: 100%;
+  margin-top: 8px;
+  color: #111827 !important;
+  background-color: #ffffff;
+}
+
+.cdx-input::placeholder {
+  color: #9ca3af;
+}
+
+.cdx-button {
+  background-color: #2563eb;
+  color: #ffffff !important;
+  border: none;
+  border-radius: 6px;
+  padding: 8px 16px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: background-color 0.2s;
+}
+
+.cdx-button:hover {
+  background-color: #1d4ed8;
+}
