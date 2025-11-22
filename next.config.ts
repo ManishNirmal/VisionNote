@@ -5,7 +5,7 @@ const nextConfig: NextConfig = {
     remotePatterns: [
       {
         protocol: 'https',
-        hostname: 'visionnote.olevel.ai',
+        hostname: 'vision.olevel.ai',
         pathname: '/up/**',
       },
       {

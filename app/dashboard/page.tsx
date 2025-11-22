@@ -2,7 +2,20 @@
 
 import { UserButton, useUser } from "@clerk/nextjs";
 import { useState, useEffect, useRef } from "react";
-import { ImageIcon, Loader2 } from "lucide-react";
+import {
+  ImageIcon,
+  Loader2,
+  ZoomIn,
+  ZoomOut,
+  Crop,
+  UnfoldHorizontal,
+  UnfoldVertical,
+  Save,
+  FileDown,
+  Send,
+} from "lucide-react";
+import ReactCrop, { type Crop as CropType } from "react-image-crop";
+import "react-image-crop/dist/ReactCrop.css";
 
 export default function DashboardPage() {
   const { user } = useUser();
@@ -15,293 +28,450 @@ export default function DashboardPage() {
   const editorRef = useRef<any>(null);
   const editorInstanceRef = useRef<any>(null);
 
+  const [splitDirection, setSplitDirection] = useState<"horizontal" | "vertical">("horizontal");
+  const [zoom, setZoom] = useState(1);
+  const [crop, setCrop] = useState<CropType>();
+  const [completedCrop, setCompletedCrop] = useState<CropType>();
+  const imgRef = useRef<HTMLImageElement>(null);
+  const [isCropping, setIsCropping] = useState(false);
+
+  // For panning / dragging
+const [isDragging, setIsDragging] = useState(false);
+const [position, setPosition] = useState({ x: 0, y: 0 });
+const dragStart = useRef({ x: 0, y: 0 });
+
+
   useEffect(() => {
-    // Initialize Editor.js
     const initEditor = async () => {
       if (editorInstanceRef.current) return;
+      const EditorJS = (await import("@editorjs/editorjs")).default;
+      const Header = (await import("@editorjs/header")).default;
+      const List = (await import("@editorjs/list")).default;
+      const LinkTool = (await import("@editorjs/link")).default;
+      const InlineCode = (await import("@editorjs/inline-code")).default;
+      const ImageTool = (await import("@editorjs/image")).default;
 
-      const EditorJS = (await import('@editorjs/editorjs')).default;
-      const Header = (await import('@editorjs/header')).default;
-      const List = (await import('@editorjs/list')).default;
-      const LinkTool = (await import('@editorjs/link')).default;
-      const InlineCode = (await import('@editorjs/inline-code')).default;
-      const ImageTool = (await import('@editorjs/image')).default;
+      const Quote = (await import("@editorjs/quote")).default;
+      const CodeTool = (await import("@editorjs/code")).default;
+      const Table = (await import("@editorjs/table")).default;
 
       if (editorRef.current) {
         editorInstanceRef.current = new EditorJS({
           holder: editorRef.current,
           tools: {
-            header: {
-              // @ts-ignore - EditorJS type compatibility
-              class: Header,
-              config: {
-                levels: [1, 2, 3, 4, 5, 6],
-                defaultLevel: 2
-              }
-            },
-            list: {
-              // @ts-ignore - EditorJS type compatibility
-              class: List,
-              inlineToolbar: true,
-            },
-            // @ts-ignore - EditorJS type compatibility
+            header: { class: Header, inlineToolbar: true },
+            list: { class: List, inlineToolbar: true },
             linkTool: LinkTool,
-            // @ts-ignore - EditorJS type compatibility
             inlineCode: InlineCode,
+            quote: Quote,
+            code: CodeTool,
+            table: Table,
             image: {
-              // @ts-ignore - EditorJS type compatibility
               class: ImageTool,
               config: {
                 endpoints: {
-                  byFile: '/api/uploadImage', // Backend endpoint for image upload
-                  byUrl: '/api/fetchUrl', // Backend endpoint to fetch image by URL
+                  byFile: "/api/uploadImage",
+                  byUrl: "/api/fetchUrl",
                 },
-                field: 'image',
-                types: 'image/*',
-              }
+              },
             },
           },
-          placeholder: 'Type your description here...',
+          placeholder: "Type your description here...",
           minHeight: 400,
         });
       }
     };
-
     initEditor();
-
     return () => {
-      if (editorInstanceRef.current && editorInstanceRef.current.destroy) {
-        editorInstanceRef.current.destroy();
-        editorInstanceRef.current = null;
-      }
+      editorInstanceRef.current?.destroy();
+      editorInstanceRef.current = null;
     };
   }, []);
 
   useEffect(() => {
-    // Fetch the image URL from the API
     const fetchImage = async () => {
       setIsLoading(true);
       setImageError(false);
       try {
-        const response = await fetch('https://n8n.olevel.ai/webhook/2247c50d-c23d-48e4-8ab6-12072aef03dd', {
-          method: 'GET',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        });
+        const payload = { userId: user?.id };
 
-        if (!response.ok) {
-          throw new Error('Failed to fetch image data');
-        }
+        const response = await fetch(
+          "https://n8n.olevel.ai/webhook/getRandomImage",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          }
+        );
 
-        const data = await response.json();
+        if (!response.ok) throw new Error("Failed to fetch image");
+        const responseData = await response.json();
 
-        // Assuming the API returns an object with an imageUrl or url field
-        // Adjust based on actual API response structure
-        const url = data.imageUrl || data.url || data.image || data;
+        if (responseData) {
+          const imageUrl = responseData.image;
+          if (typeof imageUrl === "string") {
+            setImageUrl(imageUrl);
+          } else {
+            setImageError(true);
+          }
 
-        if (typeof url === 'string') {
-          setImageUrl(url);
-        } else if (Array.isArray(data) && data.length > currentImageIndex) {
-          setImageUrl(data[currentImageIndex].url || data[currentImageIndex]);
+          if (responseData.data && editorInstanceRef.current) {
+            try {
+              const parsedData = JSON.parse(responseData.data);
+              await editorInstanceRef.current.clear();
+
+              if (parsedData.savedData) {
+                const editorData =
+                  typeof parsedData.savedData === "string"
+                    ? JSON.parse(parsedData.savedData)
+                    : parsedData.savedData;
+
+                if (Array.isArray(editorData)) {
+                  await editorInstanceRef.current.blocks.render(editorData);
+                } else if (editorData.blocks) {
+                  await editorInstanceRef.current.render(editorData);
+                }
+              } else if (parsedData.context) {
+                editorInstanceRef.current.blocks.insert("paragraph", {
+                  text: parsedData.context,
+                });
+              }
+            } catch (e) {
+              console.error("Failed to parse/load saved editor data", e);
+            }
+          }
         } else {
-          console.error('Unexpected data format:', data);
           setImageError(true);
         }
-
-        setIsLoading(false);
-      } catch (error) {
-        console.error("Error loading image:", error);
+      } catch (err) {
         setImageError(true);
-        setIsLoading(false);
       }
+      setIsLoading(false);
     };
 
     fetchImage();
   }, [currentImageIndex]);
 
-  const handlePrevious = () => {
-    if (currentImageIndex > 0) {
-      setCurrentImageIndex(currentImageIndex - 1);
-    }
-  };
+  const handleCropAndAddToEditor = () => {
+    if (!completedCrop || !imgRef.current) return;
+    const image = imgRef.current;
+    const canvas = document.createElement("canvas");
+    const scaleX = image.naturalWidth / image.width;
+    const scaleY = image.naturalHeight / image.height;
+    canvas.width = completedCrop.width * scaleX;
+    canvas.height = completedCrop.height * scaleY;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
 
-  const handleNext = () => {
-    setCurrentImageIndex(currentImageIndex + 1);
+    ctx.drawImage(
+      image,
+      completedCrop.x * scaleX,
+      completedCrop.y * scaleY,
+      completedCrop.width * scaleX,
+      completedCrop.height * scaleY,
+      0,
+      0,
+      canvas.width,
+      canvas.height
+    );
+
+    const base64Image = canvas.toDataURL("image/jpeg");
+    if (editorInstanceRef.current) {
+      editorInstanceRef.current.blocks.insert("image", {
+        file: { url: base64Image },
+      });
+    }
   };
 
   const handleSave = async () => {
-    if (!user) {
-      alert('Please sign in to save');
-      return;
-    }
-
-    if (!editorInstanceRef.current) {
-      alert('Editor not initialized');
-      return;
-    }
+    if (!user) return alert("Please sign in.");
+    if (!editorInstanceRef.current) return alert("Editor not ready.");
 
     setIsSaving(true);
     setSaveSuccess(false);
 
     try {
       const savedData = await editorInstanceRef.current.save();
+      const edjsHTML = (await import("editorjs-html")).default;
+      const htmlToMdModule = await import("html-to-md");
+      const html2md = htmlToMdModule.default;
 
-      // Convert Editor.js data to markdown
-      const edjsParser = (await import('editorjs-parser')).default;
-      const parser = new edjsParser();
-      const markdownContent = parser.parse(savedData);
+      const parser = edjsHTML();
+      let html = parser.parse(savedData);
+      if (Array.isArray(html)) html = html.join("");
+      else if (typeof html !== "string") html = String(html);
+
+      const markdownContent = html2md(html);
+
+      const fileId = imageUrl
+        ?.split("/")
+        .pop()
+        ?.replace(".jpg", "")
+        ?.replace(".jpeg", "")
+        ?.replace(".png", "");
 
       const payload = {
         userId: user.id,
         context: markdownContent,
-        fileId: imageUrl || `image_${currentImageIndex}`,
+        fileId: fileId,
+        savedData: savedData,
+        pageIndex: currentImageIndex,
       };
 
-      const response = await fetch('https://n8n.olevel.ai/webhook-test/e1cb44f7-31e7-41d1-b550-34510ea8ab28', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-      });
+      const response = await fetch(
+        "https://n8n.olevel.ai/webhook/saveData",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        }
+      );
 
-      if (!response.ok) {
-        throw new Error('Failed to save data');
-      }
+      if (!response.ok) throw new Error("Failed to save");
 
       setSaveSuccess(true);
-      console.log('Data saved successfully:', payload);
-
-      // Reset success message after 3 seconds
-      setTimeout(() => {
-        setSaveSuccess(false);
-      }, 3000);
-
-    } catch (error) {
-      console.error('Error saving data:', error);
-      alert('Failed to save data. Please try again.');
+      setTimeout(() => setSaveSuccess(false), 3000);
+    } catch (err) {
+      console.error(err);
+      alert("Save failed.");
     } finally {
       setIsSaving(false);
     }
   };
+// Mouse down / touch start
+const handleDragStart = (e: any) => {
+  e.preventDefault();
+  setIsDragging(true);
+
+  const clientX = e.clientX || e.touches?.[0]?.clientX;
+  const clientY = e.clientY || e.touches?.[0]?.clientY;
+
+  dragStart.current = {
+    x: clientX - position.x,
+    y: clientY - position.y,
+  };
+};
+
+// Mouse move / touch move
+const handleDragMove = (e: any) => {
+  if (!isDragging) return;
+
+  const clientX = e.clientX || e.touches?.[0]?.clientX;
+  const clientY = e.clientY || e.touches?.[0]?.clientY;
+
+  setPosition({
+    x: clientX - dragStart.current.x,
+    y: clientY - dragStart.current.y,
+  });
+};
+
+// Mouse up / touch end
+const handleDragEnd = () => {
+  setIsDragging(false);
+};
+
+  const handleSaveAsMarkdown = async () => {
+    if (!editorInstanceRef.current) return alert("Editor not ready.");
+
+    try {
+      const savedData = await editorInstanceRef.current.save();
+      const edjsHTML = (await import("editorjs-html")).default;
+      const htmlToMdModule = await import("html-to-md");
+      const html2md = htmlToMdModule.default;
+
+      const parser = edjsHTML();
+      let html = parser.parse(savedData);
+
+      if (Array.isArray(html)) html = html.join("");
+      else if (typeof html !== "string") html = String(html);
+
+      const markdownContent = html2md(html);
+
+      const blob = new Blob([markdownContent], { type: "text/markdown" });
+      const url = URL.createObjectURL(blob);
+
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "note.md";
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      alert("Failed to save markdown.");
+    }
+  };
 
   const handlePublish = async () => {
-    if (!editorInstanceRef.current) {
-      alert('Editor not initialized');
-      return;
-    }
-
     const savedData = await editorInstanceRef.current.save();
     console.log("Publishing data...", { content: savedData, currentImageIndex });
-    // TODO: Implement publish functionality
+  };
+
+  const handlePrevious = () => {
+    if (currentImageIndex > 0) setCurrentImageIndex((i) => i - 1);
+  };
+
+  const handleNext = () => {
+    setCurrentImageIndex((i) => i + 1);
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-8 py-4">
-        <div className="flex justify-end mb-4">
-          <UserButton />
-        </div>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Left Section - Image Display */}
-          <div className="space-y-4">
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-8 min-h-[400px] flex flex-col items-center justify-center">
-              {isLoading ? (
-                <>
-                  <Loader2 className="w-12 h-12 text-blue-600 animate-spin mb-4" />
-                  <p className="text-gray-600">Loading image...</p>
-                </>
-              ) : imageError ? (
-                <>
-                  <div className="bg-red-50 rounded-full p-8 mb-5">
-                    <ImageIcon className="w-16 h-16 text-red-600" />
-                  </div>
-                  <h3 className="text-2xl font-bold text-gray-900 mb-2">Error loading image</h3>
-                  <p className="text-gray-500 text-center max-w-xs">
-                    Failed to load the image. Please try again.
-                  </p>
-                </>
-              ) : imageUrl ? (
-                <div className="w-full h-full flex items-center justify-center">
-                  <img
-                    src={imageUrl}
-                    alt="Vision annotation image"
-                    className="max-w-full max-h-[500px] object-contain rounded-lg"
-                    onError={() => setImageError(true)}
-                  />
-                </div>
+    <div className="flex flex-col h-screen bg-gray-100">
+      <header className="bg-white shadow-sm z-10">
+        <div className="flex justify-between items-center py-2 px-4">
+          <h1 className="text-xl font-bold text-gray-800">VisionNote</h1>
+          <div className="flex items-center space-x-4">
+            <button
+              onClick={() =>
+                setSplitDirection(
+                  splitDirection === "horizontal" ? "vertical" : "horizontal"
+                )
+              }
+              className="p-2 rounded-md hover:bg-gray-200"
+            >
+              {splitDirection === "horizontal" ? (
+                <UnfoldVertical className="text-gray-800" />
               ) : (
-                <>
-                  <div className="bg-blue-50 rounded-full p-8 mb-5">
-                    <ImageIcon className="w-16 h-16 text-blue-600" />
-                  </div>
-                  <h3 className="text-2xl font-bold text-gray-900 mb-2">No images yet</h3>
-                  <p className="text-gray-500 text-center max-w-xs">
-                    Images will appear here once loaded from your data source
-                  </p>
-                </>
+                <UnfoldHorizontal className="text-gray-800" />
+              )}
+            </button>
+            <UserButton />
+          </div>
+        </div>
+      </header>
+
+      {/* 
+      ==============================
+      NEW MOBILE LAYOUT FIX
+      ==============================
+      */}
+      <main
+        className={`
+          flex-1 flex 
+          flex-col 
+          md:flex-row
+        `}
+      >
+        {/* Image Panel */}
+        <div
+          className="
+            w-full 
+            md:w-1/2 
+            h-1/2 
+            md:h-full 
+            p-4 
+            overflow-auto
+          "
+        >
+          <div className="bg-white rounded-xl shadow-md h-full flex flex-col">
+            <div className="p-2 border-b flex justify-between items-center">
+              <h2 className="text-lg font-semibold">Image</h2>
+              <div className="flex items-center space-x-2">
+                <button onClick={() => setZoom(z => z + 0.1)} className="p-2 rounded-md hover:bg-gray-200"><ZoomIn size={20} className="text-gray-800" /></button>
+                <button onClick={() => setZoom(z => Math.max(0.1, z - 0.1))} className="p-2 rounded-md hover:bg-gray-200"><ZoomOut size={20} className="text-gray-800" /></button>
+                <button 
+                  onClick={() => {
+                    if (isCropping) {
+                      handleCropAndAddToEditor();
+                    }
+                    setIsCropping(!isCropping);
+                  }} 
+                  className={`p-2 rounded-md hover:bg-gray-200 ${isCropping ? 'bg-blue-200' : ''}`}
+                >
+                  {isCropping ? 'Paste Crop' : <Crop size={20} className="text-gray-800" />}
+                </button>
+              </div>
+            </div>
+
+            <div className="flex-1 flex items-center justify-center p-4 overflow-hidden">
+              {isLoading ? <Loader2 className="animate-spin" /> : imageError ? <ImageIcon /> : (
+                isCropping ? (
+              
+                  <ReactCrop crop={crop} onChange={c => setCrop(c)} onComplete={c => setCompletedCrop(c)}>
+  <img
+    ref={imgRef}
+    src={imageUrl}
+    crossOrigin="anonymous"
+    onMouseDown={handleDragStart}
+    onMouseMove={handleDragMove}
+    onMouseUp={handleDragEnd}
+    onMouseLeave={handleDragEnd}
+    onTouchStart={handleDragStart}
+    onTouchMove={handleDragMove}
+    onTouchEnd={handleDragEnd}
+    style={{
+      transform: `translate(${position.x}px, ${position.y}px) scale(${zoom})`,
+      cursor: isDragging ? "grabbing" : "grab",
+      transition: isDragging ? "none" : "transform 0.05s linear",
+    }}
+    alt="Source"
+  />
+</ReactCrop>
+
+
+         
+                ) : (
+                  <img
+                    ref={imgRef}
+                    src={imageUrl}
+                    crossOrigin="anonymous"
+                    onMouseDown={handleDragStart}
+                    onMouseMove={handleDragMove}
+                    onMouseUp={handleDragEnd}
+                    onMouseLeave={handleDragEnd}
+                    onTouchStart={handleDragStart}
+                    onTouchMove={handleDragMove}
+                    onTouchEnd={handleDragEnd}
+                    style={{
+                      transform: `translate(${position.x}px, ${position.y}px) scale(${zoom})`,
+                      cursor: isDragging ? "grabbing" : "grab",
+                      transition: isDragging ? "none" : "transform 0.05s linear",
+                    }}
+                    alt="Source"
+                  />
+                )
               )}
             </div>
 
-            <div className="flex gap-3">
+            <div className="grid grid-cols-2 gap-4 p-4">
               <button
                 onClick={handlePrevious}
-                disabled={currentImageIndex === 0}
-                className="flex-1 px-6 py-3 bg-white border border-gray-300 text-gray-700 rounded-full font-medium hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                disabled={currentImageIndex === 0 || isLoading}
+                className="w-full px-6 py-3 bg-white border border-gray-300 text-gray-700 rounded-full font-semibold hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 Previous
               </button>
               <button
                 onClick={handleNext}
-                className="flex-1 px-6 py-3 bg-white border border-gray-300 text-gray-700 rounded-full font-medium hover:bg-gray-50 transition-all"
+                disabled={isLoading}
+                className="w-full px-6 py-3 bg-white border border-gray-300 text-gray-700 rounded-full font-semibold hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 Next
               </button>
             </div>
           </div>
+        </div>
 
-          {/* Right Section - Text Area */}
-          <div className="space-y-4">
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
-              <label className="block text-lg font-semibold text-gray-900 mb-3">
-                Enter your text
-              </label>
-              <div
-                ref={editorRef}
-                id="editorjs"
-                className="border border-gray-200 rounded-xl p-4 min-h-[400px]"
-              />
+        {/* Editor Panel */}
+        <div
+          className="
+            w-full 
+            md:w-1/2 
+            h-1/2 
+            md:h-full 
+            p-4 
+            overflow-auto
+          "
+        >
+          <div className="bg-white rounded-xl shadow-md h-full flex flex-col">
+            <div className="p-2 border-b flex justify-between items-center">
+              <h2 className="text-lg font-semibold">Editor</h2>
+              <div className="flex items-center space-x-2">
+                <button onClick={handleSave} className="p-2 rounded-md hover:bg-gray-200"><Save size={20} className="text-gray-800" /></button>
+                <button onClick={handleSaveAsMarkdown} className="p-2 rounded-md hover:bg-gray-200"><FileDown size={20} className="text-gray-800" /></button>
+                <button onClick={handlePublish} className="p-2 rounded-md bg-blue-600 text-white hover:bg-blue-700"><Send size={20} className="text-gray-800" /></button>
+              </div>
             </div>
 
-            <div className="flex gap-3 justify-end items-center">
-              {saveSuccess && (
-                <span className="text-green-600 font-medium text-sm">
-                  ✓ Saved successfully!
-                </span>
-              )}
-              <button
-                onClick={handleSave}
-                disabled={isSaving}
-                className="px-7 py-3 bg-white border border-gray-300 text-gray-700 rounded-full font-medium hover:bg-gray-50 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-              >
-                {isSaving ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    Saving...
-                  </>
-                ) : (
-                  'Save'
-                )}
-              </button>
-              <button
-                onClick={handlePublish}
-                className="px-7 py-3 bg-blue-600 text-white rounded-full font-medium hover:bg-blue-700 transition-all shadow-sm"
-              >
-                Publish
-              </button>
-            </div>
+            <div ref={editorRef} id="editorjs" className="flex-1 p-8 pl-17" />
           </div>
         </div>
       </main>
